@@ -47,6 +47,9 @@ DEVSHELL= $(shell $(GIT) config get       devkit.shell    || echo $(DEF_DEVSHELL
 EDITOR  = $(shell $(GIT) config get       devkit.editor   || echo $(DEF_EDITOR))
 DEVPKGS = $(shell $(GIT) config get --all devkit.packages)
 VOLUMES = $(shell $(GIT) config get --all devkit.volumes)
+
+LIMIT_MEMORY = $(shell $(GIT) config get devkit.limit-memory || echo 0)
+
 SHAHASH = $(shell echo $(UID):$(GID) $(AGENT) $(VENDOR) $(sort $(DEVPKGS)) | sha256sum | cut -f1 -d\ )
 
 ifeq ($(strip $(AGENT.$(AGENT))),)
@@ -161,7 +164,7 @@ run: _create-image-$(VENDOR)
 	if ! $(PODMAN) container exists '$(PODMAN_CONTAINER)'; then
 	  $(PODMAN) container run $(PODMAN_ARGS) \
 	    --name '$(PODMAN_CONTAINER)' $(PODMAN_VOLUMES) \
-	    --rm --log-driver=none --network=host --userns=keep-id \
+	    --rm --log-driver=none --network=host --userns=keep-id --memory=$(LIMIT_MEMORY) \
 	    --user='$(UID):$(GID)' \
 	    $(PODMAN_ENTRYPOINT) -- '$(get-image-id)' "$$@" $(ARGS);
 	else
