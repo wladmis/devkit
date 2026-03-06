@@ -63,6 +63,23 @@ get-github-release = $(shell $(CURL) -fsSL -o /dev/null -w '%{url_effective}' '$
 
 UID := $(shell id -u)
 GID := $(shell id -g)
+
+ifneq ($(filter shell,$(MAKECMDGOALS)),)
+PODMAN_ENTRYPOINT := --entrypoint=$(DEVSHELL)
+endif
+
+PODMAN_ARGS = \
+	--env=LANG=C.UTF8 \
+	--env=EDITOR=$(EDITOR) \
+	--tty --interactive \
+	--workdir='/srv/$(PROJNAME)'
+PODMAN_VOLUMES = \
+	--volume=$(GITPROJDIR):/srv/$(PROJNAME):rw,Z \
+	--volume=$(HOME)/$(CONFDIR):/home/user/$(CONFDIR):rw,Z \
+	$(addprefix --volume=,$(VOLUMES))
+
+PODMAN_CONTAINER = $(AGENT)-for-$(PROJNAME)
+
 endif # not SIMPLE_GOALS
 
 .PHONY: _create-image-ubuntu $(PUBLIC_GOALS)
@@ -138,22 +155,6 @@ _create-image-ubuntu: $(if $(filter upgrade,$(MAKECMDGOALS)),clean)
 	  LABEL local.devkit.agent.version=$(get-github-release)
 	  ENTRYPOINT ["/usr/local/bin/$(BIN)"]
 	EOF
-
-ifneq ($(filter shell,$(MAKECMDGOALS)),)
-PODMAN_ENTRYPOINT := --entrypoint=$(DEVSHELL)
-endif
-
-PODMAN_ARGS = \
-	--env=LANG=C.UTF8 \
-	--env=EDITOR=$(EDITOR) \
-	--tty --interactive \
-	--workdir='/srv/$(PROJNAME)'
-PODMAN_VOLUMES = \
-	--volume=$(GITPROJDIR):/srv/$(PROJNAME):rw,Z \
-	--volume=$(HOME)/$(CONFDIR):/home/user/$(CONFDIR):rw,Z \
-	$(addprefix --volume=,$(VOLUMES))
-
-PODMAN_CONTAINER = $(AGENT)-for-$(PROJNAME)
 
 run: _create-image-$(VENDOR)
 	$(Q)set -e --; i=0; while [ $$i -lt $${NARGS:-0} ]; do
