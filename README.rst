@@ -137,7 +137,6 @@ All configuration is stored in `git-config`.
 Inspect configuration::
 
     git config devkit.agent
-    git config devkit.name
     git config --get-all devkit.packages
 
 
@@ -159,21 +158,6 @@ Supported agents:
 Example::
 
     git config devkit.agent codex
-
-
-devkit.name
------------
-
-Logical name of the dependency environment. This identifies a reusable
-environment profile. Container images are tagged and reused based on this
-identity and configuration hash. Multiple repositories can share identical
-images.
-
-Typical usage:
-
-- shared "basic-c" environment
-- shared Python tooling environments
-- centralized dependency definitions
 
 
 devkit.shell
@@ -212,7 +196,6 @@ Example shared profile:
 ``~/.config/devkit/basic-c.gitconfig``::
 
     [devkit]
-        name = basic-c
         agent = codex
         packages = gcc
         packages = make

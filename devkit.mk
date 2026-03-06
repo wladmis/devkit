@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Copyright (C) 2026  Alexey Gladkov <gladkov.alexey@gmail.com>
 
-CURNAME = devkit
 CURFILE = $(lastword $(MAKEFILE_LIST))
 PROG ?= make -f $(CURFILE) --
 VERSION = 1
@@ -36,13 +35,11 @@ PROJNAME   = $(notdir $(GITPROJDIR))
 $(if $(PROJNAME),,$(error Unable to locate the git repository))
 
 DEF_AGENT = copilot
-DEF_DEVNAME = $(PROJNAME)
 DEF_DEVSHELL = /bin/bash
 DEF_EDITOR = /usr/bin/editor
 
 VENDOR  = ubuntu
 AGENT   = $(shell $(GIT) config get       devkit.agent    || echo $(DEF_AGENT))
-DEVNAME = $(shell $(GIT) config get       devkit.name     || echo $(DEF_DEVNAME))
 DEVSHELL= $(shell $(GIT) config get       devkit.shell    || echo $(DEF_DEVSHELL))
 EDITOR  = $(shell $(GIT) config get       devkit.editor   || echo $(DEF_EDITOR))
 DEVPKGS = $(shell $(GIT) config get --all devkit.packages)
@@ -58,7 +55,6 @@ endif
 
 $(foreach f,HOMEURL INST LINK BIN CONFDIR,$(eval $(f)=$(patsubst $(f)=%,%,$(filter $(f)=%,$(AGENT.$(AGENT))))))
 
-get-image-id       = $(shell $(PODMAN) image list --filter label=local.devkit.hash=$(SHAHASH) --format '{{.Id}}')
 get-github-release = $(shell $(CURL) -fsSL -o /dev/null -w '%{url_effective}' '$(HOMEURL)' | sed -n 's,.*/tag/v\?,,p')
 
 UID := $(shell id -u)
@@ -79,6 +75,7 @@ PODMAN_VOLUMES = \
 	$(addprefix --volume=,$(VOLUMES))
 
 PODMAN_CONTAINER = $(AGENT)-for-$(PROJNAME)
+PODMAN_IMAGE = localhost/devkit/$(PROJNAME):latest
 
 endif # not SIMPLE_GOALS
 
@@ -122,8 +119,7 @@ version:
 	echo "See the GNU General Public Licence for details."
 
 init:
-	$(Q)if ! $(GIT) config get devkit.name >/dev/null 2>&1; then
-	  $(GIT) config set devkit.name "$(DEVNAME)";
+	$(Q)if ! $(GIT) config get devkit.agent >/dev/null 2>&1; then
 	  $(GIT) config set devkit.agent "$(AGENT)";
 	else
 	  echo "Discovered the existing configuration and cowardly refuse to break it." >&2;
@@ -133,9 +129,12 @@ ubuntu.packages.npm = npm
 ubuntu.packages.scr = bash curl
 
 _create-image-ubuntu: $(if $(filter upgrade,$(MAKECMDGOALS)),clean)
-	$(Q)[ -n "$(get-image-id)" ] ||
-	$(PODMAN) image build --layers=false --force-rm --format=docker --file=- \
-	  --tag="localhost/$(CURNAME)/$(DEVNAME):latest" <<-'EOF'
+	$(Q)image="`$(PODMAN) image list --filter label=local.devkit.hash=$(SHAHASH) --format '{{.Id}}' | head -1`"
+	[ -z "$$image" ] || {
+	   $(PODMAN) image tag "$$image" '$(PODMAN_IMAGE)'
+	   exit
+	}
+	$(PODMAN) image build --layers=false --force-rm --format=docker --file=- --tag="$(PODMAN_IMAGE)" <<-'EOF'
 	  FROM docker.io/library/ubuntu:latest
 	  USER root
 	  ENV PATH=/root/bin:/root/.local/bin:$$PATH
@@ -167,7 +166,7 @@ run: _create-image-$(VENDOR)
 	    --name '$(PODMAN_CONTAINER)' $(PODMAN_VOLUMES) \
 	    --rm --log-driver=none --network=host --userns=keep-id --memory=$(LIMIT_MEMORY) \
 	    --user='$(UID):$(GID)' \
-	    $(PODMAN_ENTRYPOINT) -- '$(get-image-id)' "$$@" $(ARGS);
+	    $(PODMAN_ENTRYPOINT) -- '$(PODMAN_IMAGE)' "$$@" $(ARGS);
 	else
 	  $(PODMAN) container exec $(PODMAN_ARGS) \
 	    --user='$(if $(ROOT),root,$(UID):$(GID))' \
@@ -177,9 +176,9 @@ run: _create-image-$(VENDOR)
 shell: run
 
 check:
-	$(Q)image_id="$(get-image-id)";
+	$(Q)set -e --;
 	avail_ver="$(get-github-release)";
-	image_ver="`[ -z "$$image_id" ] || $(PODMAN) image inspect "$$image_id" --format '{{index .Labels "local.devkit.agent.version"}}'`";
+	image_ver="`$(PODMAN) image list --filter 'reference=$(PODMAN_IMAGE)' --format '{{index .Labels "local.devkit.agent.version"}}'`";
 	echo "The $(AGENT) information:";
 	echo " - release home page: $(HOMEURL)";
 	echo " -  config directory: ~/$(CONFDIR)";
@@ -187,12 +186,12 @@ check:
 	echo " -   current version: $${image_ver:-*unknown*}";
 
 clean-all:
-	$(Q)$(PODMAN) image list --filter label=local.devkit.name --format '{{.Id}}' | xargs -r $(PODMAN) image rm
+	$(Q)$(PODMAN) image list --format '{{.Id}}' --filter 'label=local.devkit.agent'  | xargs -r $(PODMAN) image rm -f
 
 clean:
-	$(Q)$(PODMAN) image list --filter label=local.devkit.name=$(DEVNAME) --format '{{.Id}}' | xargs -r $(PODMAN) image rm
+	$(Q)$(PODMAN) image list --format '{{.Id}}' --filter 'reference=$(PODMAN_IMAGE)' | xargs -r $(PODMAN) image rm -f
 
 upgrade: clean _create-image-$(VENDOR)
 
 list:
-	$(Q)$(PODMAN) image list --filter label=local.devkit.name
+	$(Q)$(PODMAN) image list --filter label=local.devkit.agent
